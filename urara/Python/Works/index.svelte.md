@@ -562,3 +562,308 @@ class Salesman(Person):
         self.salary += money
         return self.salary
 ```
+课程设计：设计一个图书馆里系统。
+
+```python
+import sqlite3  # 导入sqlite数据库操作模块
+import tkinter  # 导入Tkinter GUI图形界面模块
+
+# 由于是一个基于数据库的管理系统, 因此程序运行就建立数据库连接, 最后还要关闭连接
+conn = sqlite3.connect("./books.db")
+
+# 作为简单的演示程序, 我们只创建一个books表, 包含4个字段(列) ID, ISBN, TITLE, AUTHOR
+# 数据库里同样的表名只能有一个, 为了防止第二次以后运行出错, 建表SQL语句中 使用了 IF NOT EXISTS 防止出错
+sql = '''
+CREATE TABLE IF NOT EXISTS books (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    isbn CHAR(36) UNIQUE NOT NULL,
+    title TEXT NOT NULL,
+    author TEXT
+);
+'''
+conn.execute(sql)
+conn.commit()
+
+# 做测试数据 开始>>>>>>>>>>
+# 为了方便调试, 如果数据库里没有数据, 我们查询一下books表里是否有数据, (顺带了解一下查询有多少条数据的SQL)
+# 如果没有数据,我们添加几条测试数据进去, 仅仅为调试用, 这一段可以注释掉的
+sql = '''
+    SELECT COUNT(*) FROM books
+'''
+cur = conn.cursor()
+cur.execute(sql)
+row = cur.fetchone()  # 取第一条
+if row[0] == 0:
+    sql = '''
+        INSERT INTO  books (isbn, title, author) VALUES (?, ?, ?);
+    '''
+    cur.execute(sql, ('isbn001', '庆余年', '猫腻'))
+    cur.execute(sql, ('isbn002', '赘婿', '愤怒的香蕉'))
+    cur.execute(sql, ('ABCD1234', '天龙八部', '金庸'))
+    conn.commit()
+# 做测试数据 结束<<<<<<<<<<<<<<<<<<<
+
+# 创建主窗口
+winMain = tkinter.Tk()
+winMain.title('图书管理系统')
+
+# 设置窗口大小:宽x高,注,此处不能为 "*",必须使用 "x" 字母xyz的x
+winMain.geometry('800x600')
+
+# 在窗口中添加控件
+# 1. 添加一个静态文本控件, 显示"图书一览"这几个字
+lbl = tkinter.Label(winMain, text="图书一览")
+lbl.place(x=5, y=5) # 让静态文本控件使用tkinter控件几何布局, place是相对于窗口左上角的相对位置指定, 左上角(0,0) 向右向下是+
+# tkinter控件的几何布局有下面几个:
+# pack()	包装；
+# grid()	网格；
+# place()	位置；
+
+# 2. 添加一个表格控件, 显示图书数据
+#    tkinter没有专门的表格控件，表格是用Treeview实现的, 具体参考Treeview的API文档,
+#    只要是GUI编程就没有简单短小的代码, 只能去查阅API, 设置显示参数以及数据, 下面例子的用法供参考
+
+# 这里先定义一个列名称的元组, 用于表格控件的列定义
+columns = ("id", "isbn", "title", "author")
+
+# 再定义一个列标题的元组, 用于表格控件列标题的显示
+titles = ("ID", "版号", "书名", "作者")
+
+# 开始创建这个表格控件
+from tkinter.ttk import Treeview    # Treeview在tkinter.ttk包里, 因此需要这样引用进来
+grid = Treeview(winMain, columns=columns, show='headings')
+
+# y=30 的原因是要让出30的位置给上面的静态文本"图书一览" width=790的原因是左右去掉5个边距
+grid.place(x=5, y=30, width=790, height=530)
+
+# 循环设置列标题
+for i, c in enumerate(columns, 0):
+    grid.heading(c, text=titles[i])
+
+# 查询数据并将数据显示到表格中去
+# 由于在增,改,删这些操作之后都需要重新查询一下数据并显示,因此将查询并显示这部分代码封装到一个函数中, 调用这个函数即可
+# 先定义查询并在表格中显示所有图书函数, 为了更加通用, 因此将书名作为查询条件参数, 参数是空查询全部
+def researchBooks(title):
+    # 清空表格中以前显示的值
+    for row in grid.get_children():
+        grid.delete(row)
+
+    # 根据不同情况 拼接带条件或者不带条件的SQL语句
+    sql = ''' SELECT id, isbn, title, author FROM books '''
+    cur = conn.cursor()
+
+    if title is not None and title != '': # 带条件的SQL语句
+        sql += " WHERE title like '%" + title + "%' ORDER BY id"
+    else: # 不带条件的
+        sql += ' ORDER BY id'
+
+    cur.execute(sql)
+
+    # 将数据库里查询出来的值, 逐条添加到表格控件中显示
+    for row in cur:
+        grid.insert('', 'end', values=row)
+
+
+# 调用上面这个查询函数
+researchBooks(None)
+
+# 窗口左下角, 添加4个控件, 一个静态文本:"输入书名:", 一个文本框控件让用户可以输入书名, 一个 "查询" 按钮, 一个"清空"按钮
+# 添加"输入书名:"静态文本
+lblHint = tkinter.Label(winMain, text="输入书名:")
+lblHint.place(x=5, y=600-5-30, width=80)
+
+# 添加用户可以输入书名的文本框控件
+txtTitle = tkinter.Entry(winMain)
+txtTitle.place(x=5+80+5, y=600-5-30, width=120, height=30)
+
+# 添加查询按钮
+# 因为查询按钮要绑定查询图书的事件函数, 因此先定义并实现这个查询函数
+def onBtnSearchClick():
+    title = txtTitle.get()
+    # 调用查询函数, 并把查询结果显示到表格里
+    researchBooks(title)
+
+# 创建查询按钮并绑定点击事件,然后放置到窗口上
+btnSearch = tkinter.Button(winMain, text="查询", command=onBtnSearchClick)
+btnSearch.place(x=5+80+5+120+5, y=600-5-30, width=60, height=30)
+
+# 创建清空按钮并绑定点击事件,然后放置到窗口上
+# 同样先定义清空按钮的事件
+def onBtnClearClick():
+    txtTitle.delete(0, tkinter.END)     # 这是清空文本框的方法
+    # 重新查询所有的值, 并刷新表格控件
+    researchBooks(None)
+
+btnClear = tkinter.Button(winMain, text="清空", command=onBtnClearClick)
+btnClear.place(x=5+80+5+120+5+60+5, y=600-5-30, width=60, height=30)
+
+# 窗口右下角添加操作按钮, 从右到左三个按钮: 添加图书, 修改图书, 删除图书
+# 添加图书按钮, 也是同样先定义按钮的点击事件
+def onBtnAddClick():
+    # 当点击添加按钮的时候, 我们先创建一个窗口, 让用户输入图书的信息
+    dlg = tkinter.Toplevel(winMain) # 用Toplevel创建一个子窗口, 参数是主窗口
+    dlg.geometry('400x145') # 对话框的几何属性, 窗口大小参数的意义和上面主窗口一样
+    dlg.title('添加图书') # 设置标题
+
+    # 添加控件
+    # 图书id在数据库中是自增长的, 所以不用设置控件
+    # isbn 的标签（label）和文本框（Entry）
+    lblIsbn = tkinter.Label(dlg, text='ISBN:')
+    lblIsbn.place(x=5, y=5, width=80, height=30)
+    txtIsbn = tkinter.Entry(dlg)
+    txtIsbn.place(x=5+80+5, y=5, width=400-5-80-5-5, height=30)
+
+    # title 的label和Entry
+    lblTitle = tkinter.Label(dlg, text='书名:')
+    lblTitle.place(x=5, y=40, width=80, height=30)
+    txtTitle = tkinter.Entry(dlg)
+    txtTitle.place(x=5 + 80 + 5, y=40, width=400 - 5 - 80 - 5 - 5, height=30)
+
+    # author 的label和Entry
+    lblAuthor = tkinter.Label(dlg, text='作者:')
+    lblAuthor.place(x=5, y=80, width=75, height=30)
+    txtAuthor = tkinter.Entry(dlg)
+    txtAuthor.place(x=5 + 80 + 5, y=75, width=400 - 5 - 80 - 5 - 5, height=30)
+
+    # 保存按钮, 创建保存按钮之前也要先定义按钮点击的事件函数
+    def onBtnSaveClick():
+        # 取出画面上用户输入的数据
+        isbn = txtIsbn.get()
+        title = txtTitle.get()
+        author = txtAuthor.get()
+
+        # 这个地方要做几个错误检查,例如isbn的长度, isbn是否重复 等, 为了方便阅读学习代码此处略
+        # 错误检查后, 更新到数据库中
+        sql = 'INSERT INTO books (isbn, title, author) VALUES (?, ?, ?)'
+        cur = conn.cursor()
+
+        # 执行sql的时候, 最好用Try来捕获异常, 如果错误的话给出提示, 为了方便阅读学习代码此处略
+        cur.execute(sql, (isbn, title, author))
+        conn.commit()
+
+        # 保存结束以后, 调用researchBooks函数, 将主画面表格刷新即可
+        researchBooks(None)
+
+        # 关闭新建这个对话框, 整个事件结束
+        dlg.destroy()
+
+    # 创建保存按钮并把上面这个保存事件和按钮绑定
+    btnSave = tkinter.Button(dlg, text="保存", command=onBtnSaveClick)
+    btnSave.place(x=400-5-80, y=110, width=80, height=30)
+
+    # 显示这个对话框
+    dlg.mainloop()
+
+# 主窗口上创建并安放添加图书按钮,并绑定点击事件为上面定义的onBtnAddClick事件函数
+btnAdd = tkinter.Button(winMain, text="添加图书", command=onBtnAddClick)
+btnAdd.place(x=800-5-80, y=600-5-30, width=80, height=30)
+
+# 修改图书按钮, 也是同样先定义按钮的点击事件
+def onBtnUpdateClick():
+    # 当点击修改图书按钮的时候, 先要取得主窗口上选择的哪一行图书数据
+    item = grid.item(grid.selection())  # 表格控件选择的那一行元素
+    if item is None:  # 保护一下, 防止没在表格中选择一行图书而出错
+        return
+    row = item['values']  # 表格中这一行的值(是一个列表: [id, isbn, 书名, 作者])
+    id = row[0]     # 取得主键id
+    isbn = row[1]   # isbn
+    title = row[2]  # 书名
+    author = row[3] # 作者
+
+    # 我们创建一个窗口, 把用户选择的图书的信息显示出来,并让用户修改
+    dlg = tkinter.Toplevel(winMain)  # 用Toplevel创建一个子窗口, 参数是主窗口
+    dlg.geometry('400x145')  # 对话框的几何属性, 窗口大小参数的意义和上面主窗口一样
+    dlg.title('修改图书')  # 设置标题
+
+    # 添加控件
+    # 图书id是主键, 所以不用设置控件
+    # isbn 的label和Entry
+    lblIsbn = tkinter.Label(dlg, text='ISBN:')
+    lblIsbn.place(x=5, y=5, width=80, height=30)
+    txtIsbn = tkinter.Entry(dlg)
+    txtIsbn.place(x=5 + 80 + 5, y=5, width=400 - 5 - 80 - 5 - 5, height=30)
+    txtIsbn.insert(0, isbn) # 让isbn文本框显示ISBN的值
+
+    # title 的label和Entry
+    lblTitle = tkinter.Label(dlg, text='书名:')
+    lblTitle.place(x=5, y=40, width=80, height=30)
+    txtTitle = tkinter.Entry(dlg)
+    txtTitle.place(x=5 + 80 + 5, y=40, width=400 - 5 - 80 - 5 - 5, height=30)
+    txtTitle.insert(0, title)  # 让title文本框显示书名的值
+
+    # author 的label和Entry
+    lblAuthor = tkinter.Label(dlg, text='作者:')
+    lblAuthor.place(x=5, y=80, width=75, height=30)
+    txtAuthor = tkinter.Entry(dlg, textvariable=author)
+    txtAuthor.place(x=5 + 80 + 5, y=75, width=400 - 5 - 80 - 5 - 5, height=30)
+    txtAuthor.insert(0, author)  # 让author文本框显示作者的值
+
+    # 保存按钮, 创建保存按钮之前也要先定义按钮点击的事件函数
+    def onBtnSaveClick():
+        # 取出画面上用户输入的数据
+        isbn = txtIsbn.get()
+        title = txtTitle.get()
+        author = txtAuthor.get()
+
+        # 这个地方要做几个错误检查,例如isbn的长度, isbn是否重复等, 为了方便阅读学习代码此处略
+        # 错误检查后, 更新到数据库中
+        sql = 'UPDATE books SET isbn=?, title=?, author=? WHERE id=?'
+        cur = conn.cursor()
+
+        # 执行sql的时候, 最好用Try来捕获异常, 如果错误的话给出提示, 为了方便阅读学习代码此处略
+        cur.execute(sql, (isbn, title, author, id))
+        conn.commit()
+
+        # 保存结束以后, 调用researchBooks函数, 将主画面表格刷新即可
+        researchBooks(None)
+
+        # 关闭新建这个对话框, 整个事件结束
+        dlg.destroy()
+
+    # 创建保存按钮并把上面这个保存事件和按钮绑定
+    btnSave = tkinter.Button(dlg, text="保存", command=onBtnSaveClick)
+    btnSave.place(x=400 - 5 - 80, y=110, width=80, height=30)
+
+    # 显示这个对话框
+    dlg.mainloop()
+
+
+# 主窗口上创建并安放修改图书按钮,并绑定点击事件为上面定义的onBtnUpdateClick事件函数
+btnUpdate = tkinter.Button(winMain, text="修改图书", command=onBtnUpdateClick)
+btnUpdate.place(x=800-5-80-5-80, y=600-5-30, width=80, height=30)
+
+# 删除图书按钮, 同样, 先定义按钮的点击事件
+def onBtnDeleteClick():
+    # 取得主窗口表格上选择的哪一行图书
+    item = grid.item(grid.selection())  # 表格控件选择的那一行元素
+    if item is None: # 保护一下, 防止没在表格中选择一行图书而出错
+        return
+    row = item['values']    # 表格中这一行的值(是一个列表: [id, isbn, 书名, 作者])
+    id = row[0]     # 取得主键id
+    title = row[2]  # 书名
+
+    import tkinter.messagebox
+    result = tkinter.messagebox.askokcancel(title='删除确认', message='确定删除' + title + '吗?')
+    if not result:  # 选择的不是确定按钮, 意味着取消, 这时候就返回即可
+        return
+
+    # 上面如果选择的不是确定按钮, 就return了, 所以下面这部分就开始删除
+    sql = '''
+    DELETE FROM books WHERE id = ?
+    '''
+    cur = conn.cursor()
+    cur.execute(sql, (id, ))
+    conn.commit()
+
+    # 删除完了以后, 调用查询函数, 查询所有图书, 并刷新表格
+    researchBooks(None)
+
+# 创建并安放删除图书按钮
+btnDelete = tkinter.Button(winMain, text="删除图书", command=onBtnDeleteClick)
+btnDelete.place(x=800-5-80-5-80-5-80, y=600-5-30, width=80, height=30)
+
+# 开始GUI窗口的消息循环, 等待用户输入
+winMain.mainloop()
+
+conn.close()
+```
