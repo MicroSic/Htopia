@@ -128,8 +128,12 @@ export const header: HeaderConfig = {
       link: '/hello-world'
     },
     {
-      text: 'Elements',
-      link: '/hello-world/elements'
+      text: 'Deutsch Note',
+      link: '/Deutsch Note'
+    },
+    {
+      text: 'Python Works',
+      link: '/Python/Works'
     }
   ]
 }
